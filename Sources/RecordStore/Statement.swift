@@ -20,7 +20,7 @@ public enum StatementError : RecordError {
 public final class Statement {
     private static let cleanupCharSet = CharacterSet(charactersIn: ";").union(.whitespacesAndNewlines)
     
-    internal let stmt: StmtPtr!
+    internal var stmt: StmtPtr!
     internal let db: DatabasePtr!
     
     public let parameterCount: Int32
@@ -87,7 +87,12 @@ public final class Statement {
         sqlite3_clear_bindings(self.stmt)
     }
     
-    deinit {
+    internal func finalize() {
         sqlite3_finalize(self.stmt)
+        self.stmt = nil
+    }
+    
+    deinit {
+        self.finalize()
     }
 }

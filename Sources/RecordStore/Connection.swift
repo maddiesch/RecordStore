@@ -29,7 +29,7 @@ public final class Connection {
         try? self.close()
     }
     
-    private var _ptr: OpaquePointer!
+    internal var _ptr: DatabasePtr!
     
     private var _spCounter: Int = 0
     
@@ -118,8 +118,47 @@ extension Connection : Database {
     }
 }
 
+public struct OpenFlag : OptionSet {
+    public let rawValue: UInt64
+    
+    public init(rawValue: UInt64) {
+        self.rawValue = rawValue
+    }
+    
+    public static let create = OpenFlag(rawValue: 1 << 0)
+    public static let readWrite = OpenFlag(rawValue: 1 << 1)
+    public static let readOnly = OpenFlag(rawValue: 1 << 2)
+    public static let noMutex = OpenFlag(rawValue: 1 << 3)
+    public static let privateCache = OpenFlag(rawValue: 1 << 3)
+    
+    public static let `default`: OpenFlag  = [.create, .readWrite, .noMutex, .privateCache]
+    
+    fileprivate var sqlFlags: Int32 {
+        var flags = Int32(0)
+        if self.contains(.create) {
+            flags |= SQLITE_OPEN_CREATE
+        }
+        
+        if self.contains(.readOnly) {
+            flags |= SQLITE_OPEN_READONLY
+        } else if self.contains(.readWrite) {
+            flags |= SQLITE_OPEN_READWRITE
+        }
+        
+        if self.contains(.noMutex) {
+            flags |= SQLITE_OPEN_NOMUTEX
+        }
+        
+        if self.contains(.privateCache) {
+            flags |= SQLITE_OPEN_PRIVATECACHE
+        }
+        
+        return flags
+    }
+}
+
 extension Connection {
-    public func open() throws {
+    public func open(flags: OpenFlag = .default) throws {
         try self.queue.sync {
             guard self._ptr == nil else {
                 return
@@ -142,7 +181,7 @@ extension Connection {
             
             var ptr: OpaquePointer?
             
-            let status = sqlite3_open_v2(path, &ptr, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
+            let status = sqlite3_open_v2(path, &ptr, flags.sqlFlags, nil)
             
             guard status == SQLITE_OK else {
                 throw ConnectionError.openFailure(status)
@@ -159,7 +198,6 @@ extension Connection {
             guard let ptr = self._ptr else {
                 return
             }
-            self._ptr = nil
             
             Log.connection.debug("Closing database connection")
             
@@ -168,6 +206,8 @@ extension Connection {
             guard status == SQLITE_OK else {
                 throw ConnectionError.closeFailure(status)
             }
+            
+            self._ptr = nil
         }
         
         self.publish(event: Event(.closed))
@@ -207,6 +247,16 @@ extension Connection {
     public func perform(operation: Operation) throws {
         try self.savepoint {
             try operation.perform(in: $0)
+        }
+    }
+}
+
+extension Connection {
+    public func backup(to: Connection) throws {
+        try self.queue.sync {
+            try to.queue.sync {
+                try online_db_backup(from: self._ptr, to: to._ptr, fromName: "main", toName: "main")
+            }
         }
     }
 }

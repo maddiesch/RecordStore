@@ -11,7 +11,7 @@ import SQLite3
 public protocol RecordError : Swift.Error {
 }
 
-public enum ConnectionError : RecordError {
+public enum ConnectionError : RecordError, Equatable {
     case open(String)
     case openFailure(Int32)
     case closeFailure(Int32)

@@ -9,6 +9,34 @@ final class RecordStoreTests: XCTestCase {
         try conn.close()
     }
     
+    func testCallingExecuteOnUnopenedConnection() {
+        do {
+            let conn = Connection(source: .memory)
+            
+            try conn.execute(sql: "CREATE TABLE testing (id TEXT);")
+            
+            XCTFail()
+        } catch let error as ConnectionError {
+            XCTAssertEqual(ConnectionError.unopened, error)
+        } catch {
+            XCTFail(error.localizedDescription)
+        }
+    }
+    
+    func testCallingQueryOnUnopenedConnection() {
+        do {
+            let conn = Connection(source: .memory)
+            
+            _ = try conn.query(sql: "SELECT 1;")
+            
+            XCTFail()
+        } catch let error as ConnectionError {
+            XCTAssertEqual(ConnectionError.unopened, error)
+        } catch {
+            XCTFail(error.localizedDescription)
+        }
+    }
+    
     func testRawExecute() throws {
         let conn = Connection(source: .memory)
         
@@ -24,6 +52,20 @@ final class RecordStoreTests: XCTestCase {
         
         try conn.savepoint {
             try $0.execute(sql: "CREATE TABLE \"testing\" (id INTEGER PRIMARY KEY AUTOINCREMENT);")
+        }
+    }
+    
+    func testSavepointOnUnopenedConnection() {
+        let conn = Connection(source: .memory)
+        
+        do {
+            try conn.savepoint { _ in }
+            
+            XCTFail()
+        } catch let error as ConnectionError {
+            XCTAssertEqual(ConnectionError.unopened, error)
+        } catch {
+            XCTFail(error.localizedDescription)
         }
     }
     
@@ -111,5 +153,22 @@ final class RecordStoreTests: XCTestCase {
         
         try conn.perform(operation: m1)
         try conn.perform(operation: m2)
+    }
+    
+    func testBackup() throws {
+        let c1 = Connection(source: .memory)
+        try c1.open()
+        
+        let c2 = Connection(source: .memory)
+        try c2.open()
+        
+        try c1.execute(sql: "CREATE TABLE testing_table (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+        try c1.execute(sql: "INSERT INTO testing_table (name) VALUES (?)", parameters: ["Maddie Schipper"])
+        
+        try c1.backup(to: c2)
+        
+        let row = try c2.query(sql: "SELECT name FROM testing_table;").first()
+        
+        XCTAssertEqual(row.string(forColumn: "name"), "Maddie Schipper")
     }
 }
