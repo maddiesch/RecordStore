@@ -13,6 +13,8 @@ public protocol Database {
     func execute(statement: Statement) throws
     
     func query(statement: Statement) throws -> Result
+    
+    func lastInsertedRowID() throws -> Int64
 }
 
 extension Database {

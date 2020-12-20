@@ -47,6 +47,10 @@ internal final class _Savepoint : Savepoint {
         return try self.connection._prepare(sql: sql)
     }
     
+    func lastInsertedRowID() throws -> Int64 {
+        return try self.connection._lastInsertedRowID()
+    }
+    
     func savepoint<T>(block: (Savepoint) throws -> T) throws -> T {
         return try self.connection._savepoint(block: block)
     }

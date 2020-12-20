@@ -28,6 +28,7 @@ open class Migration : Operation {
         }
         
         try sp.savepoint { msp in
+            Log.context.debug("Running Migration: \(self.name)")
             try self.migrate(in: msp)
         }
         

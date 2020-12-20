@@ -91,6 +91,10 @@ extension Connection : Database {
         }
     }
     
+    public func lastInsertedRowID() throws -> Int64 {
+        return try self._lastInsertedRowID()
+    }
+    
     internal func _execute(statement: Statement) throws {
         guard self._ptr != nil else {
             throw ConnectionError.unopened
@@ -115,6 +119,14 @@ extension Connection : Database {
         }
         
         return try statement._query()
+    }
+    
+    internal func _lastInsertedRowID() throws -> Int64 {
+        guard self._ptr != nil else {
+            throw ConnectionError.unopened
+        }
+        
+        return sqlite3_last_insert_rowid(self._ptr)
     }
 }
 

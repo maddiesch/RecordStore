@@ -41,6 +41,35 @@ public enum Value {
     }
 }
 
+extension Value {
+    public var string: String? {
+        switch self {
+        case .string(let v):
+            return v
+        default:
+            return nil
+        }
+    }
+    
+    public var integer: Int64? {
+        switch self {
+        case .int64(let v):
+            return v
+        default:
+            return nil
+        }
+    }
+    
+    public var date: Date? {
+        switch self {
+        case .int64(let v):
+            return Date(timeIntervalSince1970: Double(v))
+        default:
+            return nil
+        }
+    }
+}
+
 extension Value : ExpressibleByNilLiteral {
     public init(nilLiteral: ()) {
         self = .null

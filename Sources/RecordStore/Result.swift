@@ -8,7 +8,7 @@
 import Foundation
 import SQLite3
 
-public enum ResultError : RecordError {
+public enum ResultError : RecordError, Equatable {
     case columnNameReadError(Int32)
     case unknownColumnType(Int32, Int32)
     case nullColumn(Int32)
@@ -112,12 +112,7 @@ public final class Result {
 
 extension Result.Row {
     public func string(forColumn name: String) -> String? {
-        switch self[name] {
-        case .string(let string):
-            return string
-        default:
-            return nil
-        }
+        return self[name]?.string
     }
     
     public func data(forColumn name: String) -> Data? {
@@ -130,12 +125,7 @@ extension Result.Row {
     }
     
     public func integer(forColumn name: String) -> Int64? {
-        switch self[name] {
-        case .int64(let i):
-            return i
-        default:
-            return nil
-        }
+        return self[name]?.integer
     }
     
     public func double(forColumn name: String) -> Double? {
