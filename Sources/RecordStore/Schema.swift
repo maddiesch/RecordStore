@@ -8,6 +8,10 @@
 public struct Schema : Codable {
     public var tables: Array<TableSchema>
     
+    public init(_ tables: TableSchema...) throws {
+        self.init(tables: tables)
+    }
+    
     public init(tables: Array<TableSchema>) {
         self.tables = tables
     }

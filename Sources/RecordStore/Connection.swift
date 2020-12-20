@@ -261,6 +261,12 @@ extension Connection {
             try operation.perform(in: $0)
         }
     }
+    
+    internal func onQueue<T>(_ block: () throws -> T) rethrows -> T {
+        return try self.queue.sync {
+            return try block()
+        }
+    }
 }
 
 extension Connection {

@@ -21,4 +21,6 @@ public struct Log {
     internal static let sql = Logger(subsystem: Log.subsystem, category: "sql")
     
     internal static let context = Logger(subsystem: Log.subsystem, category: "context")
+    
+    internal static let coordinator = Logger(subsystem: Log.subsystem, category: "coordinator")
 }
