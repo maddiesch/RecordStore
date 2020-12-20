@@ -99,6 +99,12 @@ open class Record : Model {
     }
 }
 
+extension Record : CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return "\(String(describing: type(of: self)))(\(self.primaryKey))"
+    }
+}
+
 extension Record {
     @discardableResult
     public func reload(for db: Database) throws -> Record {

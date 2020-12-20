@@ -46,3 +46,15 @@ extension Database {
         return try self.query(statement: stmt)
     }
 }
+
+extension String {
+    func escape(prefix: String = "\"", suffix: String = "\"") -> String {
+        return "\(prefix)\(self)\(suffix)"
+    }
+}
+
+extension Array where Element == String {
+    func escape(prefix: String = "\"", suffix: String = "\"") -> Array<Element> {
+        return self.map { $0.escape(prefix: prefix, suffix: suffix) }
+    }
+}

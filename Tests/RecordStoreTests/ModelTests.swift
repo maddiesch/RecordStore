@@ -70,6 +70,24 @@ final class ModelTests: XCTestCase {
         
         XCTAssertEqual(person.value(forKey: "firstName")?.string, "Madison")
     }
+    
+    func testQueryBuilding() throws {
+        let person = Person()
+        
+        person.set(value: "Maddie", forKey: "firstName")
+        person.set(value: "Schipper", forKey: "lastName")
+        
+        try connection.insert(model: person)
+        
+        
+        let query = Query(for: Person.self).limit(2).where("rowid", eq: .int64(1)).where("createdAt", gt: .int64(0)).order(by: "firstName").order(by: "lastName", direction: .descending)
+        
+        let people = try connection.query(query)
+        
+        print(people)
+        
+        XCTAssertEqual(people.count, 1)
+    }
 }
 
 final class SchemaTests : XCTestCase {

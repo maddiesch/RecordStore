@@ -53,6 +53,12 @@ public final class Coordinator {
         self._didSave.send(model)
     }
     
+    public func query<T: Model>(for type: T.Type, query: Query<T>) throws -> CoordinatedQuery<T> {
+        let statement = try query.prepare(self.connection)
+        
+        return self.query(for: type, statement: statement)
+    }
+    
     public func query<T : Model>(for type: T.Type, _ sql: String, parameters: Array<Value> = []) throws -> CoordinatedQuery<T> {
         let statement = try self.connection.prepare(sql: sql)
         try statement.bind(parameters)
@@ -187,3 +193,27 @@ extension Set where Element == AnyCancellable {
         self.removeAll()
     }
 }
+
+
+#if canImport(SwiftUI)
+
+import SwiftUI
+
+public struct CoordinatedView<Content : View, ViewModel : Model> : View {
+    private let content: (Array<ViewModel>) -> Content
+    
+    @ObservedObject var query: CoordinatedQuery<ViewModel>
+    
+    public init(query: CoordinatedQuery<ViewModel>, @ViewBuilder content: @escaping (Array<ViewModel>) -> Content) {
+        self.content = content
+        self.query = query
+    }
+    
+    public var body: some View {
+        return ZStack {
+            self.content(self.query.objects)
+        }
+    }
+}
+
+#endif
