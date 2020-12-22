@@ -42,3 +42,22 @@ public struct SQLError : RecordError {
         self.extendedErrCode = eCode
     }
 }
+
+extension SQLError : CustomNSError {
+    public static var errorDomain: String {
+        "dev.schipper.RecordStore.SQLError"
+    }
+
+    /// The error code within the given domain.
+    public var errorCode: Int {
+        return Int(self.errCode)
+    }
+
+    /// The user-info dictionary.
+    public var errorUserInfo: [String : Any] {
+        return [
+            NSLocalizedDescriptionKey: "SQL Error (\(self.extendedErrCode)) \(self.message)",
+            NSLocalizedFailureReasonErrorKey: self.message,
+        ]
+    }
+}

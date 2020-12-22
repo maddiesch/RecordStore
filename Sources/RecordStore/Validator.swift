@@ -32,6 +32,7 @@ public struct ValidationContext {
     private var errors: Array<Error> = []
     
     public mutating func add(error: Error) {
+        Log.context.debug("Validation Error: \(error.localizedDescription)")
         self.errors.append(error)
     }
     

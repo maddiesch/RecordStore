@@ -112,9 +112,16 @@ public struct TableSchema : Codable {
         public let name: String
         public let storage: StorageClass
         public let options: Options
+        public let `default`: String?
         
         var sql: String {
-            return "\"\(self.name)\" \(self.storage.rawValue) \(self.options.sql)".trimmingCharacters(in: .whitespacesAndNewlines)
+            var sql = "\"\(self.name)\" \(self.storage.rawValue) \(self.options.sql)"
+            
+            if let def = self.default {
+                sql += " DEFAULT \(def)"
+            }
+            
+            return sql.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
     
@@ -160,8 +167,8 @@ public struct TableSchema : Codable {
     public private(set) var indices = Array<Index>()
     public private(set) var foreignKeys = Array<ForeignKey>()
     
-    public mutating func add(columnWithName name: String, type: Column.StorageClass, options: Column.Options = []) {
-        let col = Column(name: name, storage: type, options: options)
+    public mutating func add(columnWithName name: String, type: Column.StorageClass, options: Column.Options = [], default def: String? = nil) {
+        let col = Column(name: name, storage: type, options: options, default: def)
         
         self.columns.append(col)
     }

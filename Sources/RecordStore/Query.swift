@@ -8,7 +8,7 @@
 import Foundation
 
 public final class Query<Element : Model> {
-    private typealias WhereClause = (name: String, value: Value, comparitor: String)
+    private typealias WhereClause = (name: String, value: Array<Value>, comparitor: String, qualifier: String)
     private typealias OrderClause = (name: String, direction: OrderDirection)
     
     public enum OrderDirection : String {
@@ -37,27 +37,43 @@ public final class Query<Element : Model> {
     }
     
     public func `where`(_ column: String, eq v: Value) -> Self {
-        return self.where(column: column, value: v, comparitor: "=")
+        return self.where(column: column, value: v, comparitor: "=", qualifier: "")
     }
     
     public func `where`(_ column: String, gt v: Value) -> Self {
-        return self.where(column: column, value: v, comparitor: ">")
+        return self.where(column: column, value: v, comparitor: ">", qualifier: "")
     }
     
     public func `where`(_ column: String, lt v: Value) -> Self {
-        return self.where(column: column, value: v, comparitor: "<")
+        return self.where(column: column, value: v, comparitor: "<", qualifier: "")
     }
     
     public func `where`(_ column: String, gte v: Value) -> Self {
-        return self.where(column: column, value: v, comparitor: ">=")
+        return self.where(column: column, value: v, comparitor: ">=", qualifier: "")
     }
     
     public func `where`(_ column: String, lte v: Value) -> Self {
-        return self.where(column: column, value: v, comparitor: "<=")
+        return self.where(column: column, value: v, comparitor: "<=", qualifier: "")
     }
     
-    public func `where`(column: String, value: Value, comparitor: String = "=") -> Self {
-        self.wheres.append((name: column, value: value, comparitor: comparitor))
+    public func `where`(_ column: String, not v: Value) -> Self {
+        return self.where(column: column, value: v, comparitor: "=", qualifier: "")
+    }
+    
+    public func `where`(_ column: String, in v: [Value]) -> Self {
+        self.wheres.append((name: column, value: v, comparitor: "", qualifier: ""))
+        
+        return self
+    }
+    
+    public func `where`(_ column: String, notIn v: [Value]) -> Self {
+        self.wheres.append((name: column, value: v, comparitor: "", qualifier: "NOT"))
+        
+        return self
+    }
+    
+    public func `where`(column: String, value: Value, comparitor: String, qualifier: String) -> Self {
+        self.wheres.append((name: column, value: [value], comparitor: comparitor, qualifier: qualifier))
         
         return self
     }
@@ -68,7 +84,7 @@ public final class Query<Element : Model> {
         return self
     }
     
-    internal func prepare(_ db: Database) throws -> Statement {
+    internal func generate() -> (String, Dictionary<String, Value>) {
         var sql = "SELECT"
         if self.select.count == 0 {
             sql += " *"
@@ -83,9 +99,18 @@ public final class Query<Element : Model> {
             sql += " WHERE "
             
             var clauses = Array<String>()
-            for (index, (name, value, compare)) in self.wheres.enumerated() {
-                clauses.append("\(name.escape()) \(compare) :w\(index)")
-                values["w\(index)"] = value
+            for (index, (name, value, compare, qualifier)) in self.wheres.enumerated() {
+                if compare == "" {
+                    var names = Array<String>()
+                    for (vi, value) in value.enumerated() {
+                        names.append(":w\(index)v\(vi)")
+                        values["w\(index)v\(vi)"] = value
+                    }
+                    clauses.append("\(qualifier) \(name.escape()) IN (\(names.joined(separator: ", ")))".trimmingCharacters(in: .whitespaces))
+                } else {
+                    clauses.append("\(qualifier) \(name.escape()) \(compare) :w\(index)".trimmingCharacters(in: .whitespaces))
+                    values["w\(index)"] = value[0]
+                }
             }
             sql += clauses.joined(separator: " AND ")
         }
@@ -101,17 +126,16 @@ public final class Query<Element : Model> {
         
         sql += ";"
         
-        let statement = try db.prepare(sql: sql)
-        
-        try statement.bind(values)
-        
-        return statement
+        return (sql, values)
     }
 }
 
 extension Database {
     public func query<T>(_ query: Query<T>) throws -> Array<T> {
-        let statement = try query.prepare(self)
+        let (sql, values) = query.generate()
+        
+        let statement = try self.prepare(sql: sql)
+        try statement.bind(values)
         
         let results = try self.query(statement: statement)
         

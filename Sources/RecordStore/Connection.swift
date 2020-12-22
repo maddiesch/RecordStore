@@ -17,7 +17,7 @@ public enum Source {
 typealias DatabasePtr = OpaquePointer
 
 public final class Connection {
-    private let source: Source
+    public let source: Source
     
     private let queue = DispatchQueue(label: "dev.schipper.RecordStore-Connection")
     
@@ -285,7 +285,7 @@ extension Statement {
         
         let status = sqlite3_step(self.stmt)
         
-        try SQLError.check(status: status, ptr: self.db, success: [SQLITE_DONE])
+        try SQLError.check(status: status, ptr: self.db, success: [SQLITE_DONE, SQLITE_ROW])
     }
     
     fileprivate func _query() throws -> Result {

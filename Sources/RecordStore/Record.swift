@@ -6,8 +6,9 @@
 //
 
 import Foundation
+import Combine
 
-open class Record : Model {
+open class Record : Model, ObservableObject {
     public static var tableName: String {
         return self.createTableSchema().tableName
     }
@@ -23,7 +24,12 @@ open class Record : Model {
         schema.add(columnWithName: "createdAt", type: .integer, options: .notNull)
         schema.add(columnWithName: "updatedAt", type: .integer, options: .notNull)
         
+        self.configureTableSchema(&schema)
+        
         return schema
+    }
+    
+    open class func configureTableSchema(_ schema: inout TableSchema) {
     }
     
     open class func registered(inConnection connection: Connection) throws {
@@ -37,6 +43,10 @@ open class Record : Model {
         self.set(value: Value(date: Date()), forKey: "updatedAt")
         
         self.willSave()
+    }
+    
+    internal func _willDelete(_ db: Database) {
+        
     }
     
     open func willSave() {
@@ -58,6 +68,8 @@ open class Record : Model {
     }
     
     public func set(value: Value, forKey key: String) {
+        self.objectWillChange.send()
+        
         self.storage[key] = value
     }
     
@@ -71,6 +83,11 @@ open class Record : Model {
     
     public func inserted(withRowID id: Int64) {
         self.set(value: .int64(id), forKey: "id")
+        self.wasInserted()
+    }
+    
+    open func wasInserted() {
+        
     }
     
     private class func _validators() -> Array<Validator> {
@@ -97,6 +114,16 @@ open class Record : Model {
         
         try context.finalize()
     }
+    
+    public var isNew: Bool {
+        return self.primaryKey <= 0
+    }
+}
+
+extension Record : Identifiable {
+    public var id: Int64 {
+        return self.primaryKey
+    }
 }
 
 extension Record : CustomDebugStringConvertible {
@@ -115,10 +142,6 @@ extension Record {
 }
 
 extension Record {
-    public var id: Int64 {
-        return self.primaryKey
-    }
-    
     public var createdAt: Date {
         return self.value(forKey: "createdAt")?.date ?? Date()
     }

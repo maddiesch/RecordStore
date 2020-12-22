@@ -65,6 +65,15 @@ extension Model {
         
         return statement
     }
+    
+    internal func deleteStatement(forDatabase db: Database) throws -> Statement {
+        let sql = "DELETE FROM \(type(of: self).tableName.escape()) WHERE \"rowid\" = :id;"
+        
+        let statement = try db.prepare(sql: sql)
+        try statement.bind(["id": .int64(self.primaryKey)])
+        
+        return statement
+    }
 }
 
 extension Result {
@@ -132,6 +141,22 @@ extension Database {
         } else {
             try self.insert(model: model)
         }
+    }
+    
+    public func delete(model: Model) throws {
+        if model.primaryKey <= 0 {
+            return
+        }
+        
+        Log.context.debug("Delete \(String(describing: type(of: model)))(\(model.primaryKey))")
+        
+        if let record = model as? Record {
+            record._willDelete(self)
+        }
+        
+        let statement = try model.deleteStatement(forDatabase: self)
+        
+        try self.execute(statement: statement)
     }
     
     public func find<T : Model>(type: T.Type, _ id: Int64) throws -> T {

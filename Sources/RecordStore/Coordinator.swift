@@ -9,9 +9,9 @@ import Foundation
 import Combine
 
 public final class Coordinator {
-    public static let global = Coordinator()
-    
     fileprivate var connection: Connection!
+    
+    public init() {}
     
     public func open(_ source: Source) throws {
         let conn = Connection(source: source)
@@ -43,6 +43,8 @@ public final class Coordinator {
     
     private let _willSave = PassthroughSubject<Model, Never>()
     private let _didSave = PassthroughSubject<Model, Never>()
+    private let _willDelete = PassthroughSubject<Model, Never>()
+    private let _didDelete = PassthroughSubject<Model, Never>()
     private let _didCommit = PassthroughSubject<Void, Never>()
     
     fileprivate func willSave(_ model: Model) {
@@ -53,22 +55,43 @@ public final class Coordinator {
         self._didSave.send(model)
     }
     
-    public func query<T: Model>(for type: T.Type, query: Query<T>) throws -> CoordinatedQuery<T> {
-        let statement = try query.prepare(self.connection)
-        
-        return self.query(for: type, statement: statement)
+    fileprivate func willDelete(_ model: Model) {
+        self._willDelete.send(model)
     }
     
-    public func query<T : Model>(for type: T.Type, _ sql: String, parameters: Array<Value> = []) throws -> CoordinatedQuery<T> {
-        let statement = try self.connection.prepare(sql: sql)
-        try statement.bind(parameters)
-        
-        return self.query(for: type, statement: statement)
+    fileprivate func didDelete(_ model: Model) {
+        self._didDelete.send(model)
     }
     
-    public func query<T : Model>(for type: T.Type, statement: Statement) -> CoordinatedQuery<T> {
-        return CoordinatedQuery(self, statement, self._didSave.eraseToAnyPublisher(), self._didCommit.eraseToAnyPublisher())
+    public func query<T : Model>(_ query: Query<T>) -> CoordinatedQuery<T> {
+        return CoordinatedQuery(
+            self,
+            query,
+            self._didSave.eraseToAnyPublisher(),
+            self._didDelete.eraseToAnyPublisher(),
+            self._didCommit.eraseToAnyPublisher()
+        )
     }
+    
+    public func run(_ operation: Operation) throws {
+        try self.connection.perform(operation: operation)
+    }
+    
+    public func withConnection<T>(block: (Connection) throws -> T) rethrows -> T {
+        defer {
+            self.invalidate()
+        }
+        
+        return try block(self.connection)
+    }
+    
+    public func invalidate() {
+        NotificationCenter.default.post(name: .coordinatedObjectsShouldInvalidate, object: self)
+    }
+}
+
+extension Notification.Name {
+    fileprivate static let coordinatedObjectsShouldInvalidate = Notification.Name("coordinatedObjectsShouldInvalidate")
 }
 
 public struct Coordinated {
@@ -92,6 +115,20 @@ extension Coordinated {
         try self.db.save(model: model)
         self.coordinator.didSave(model)
     }
+    
+    public func delete(_ model: Model) throws {
+        self.coordinator.willDelete(model)
+        try self.db.delete(model: model)
+        self.coordinator.didDelete(model)
+    }
+    
+    public func run(_ sql: String, parameters: Array<Value> = []) throws {
+        try db.execute(sql: sql, parameters: parameters)
+    }
+    
+    public func run(_ sql: String, parameters: Dictionary<String, Value>) throws {
+        try db.execute(sql: sql, parameters: parameters)
+    }
 }
 
 public class CoordinatedQuery<ModelType : Model> : ObservableObject, Cancellable {
@@ -105,49 +142,65 @@ public class CoordinatedQuery<ModelType : Model> : ObservableObject, Cancellable
     
     private var _observers: Set<AnyCancellable> = []
     
-    private let statement: Statement
-    
     private var _hasChanges: Bool
     
     private var _queue: DispatchQueue
     
     private var _error = PassthroughSubject<Error, Never>()
     
+    private var query: Query<ModelType>
+    
     public var errorPublisher: AnyPublisher<Error, Never> {
         return self._error.eraseToAnyPublisher()
     }
     
-    fileprivate init(_ coord: Coordinator, _ statement: Statement, _ didSave: AnyPublisher<Model, Never>, _ didCommit: AnyPublisher<Void, Never>) {
-        self.statement = statement
+    fileprivate init(_ coord: Coordinator, _ query: Query<ModelType>, _ didSave: AnyPublisher<Model, Never>, _ didDelete: AnyPublisher<Model, Never>, _ didCommit: AnyPublisher<Void, Never>) {
         self._coordinator = coord
         self._hasChanges = false
+        self.query = query
         self._queue = DispatchQueue(label: "dev.schipper.RecordStore-CoordinatedQuery")
         
         didSave.receive(on: self._queue).sink(receiveValue: { [weak self] model in
             self?.didSave(model)
         }).store(in: &_observers)
         
+        didDelete.receive(on: self._queue).sink(receiveValue: { [weak self] model in
+            self?.didDelete(model)
+        }).store(in: &_observers)
+        
         didCommit.receive(on: self._queue).sink(receiveValue: { [weak self] in
             self?.didCommit()
         }).store(in: &_observers)
+        
+        NotificationCenter.default.publisher(for: .coordinatedObjectsShouldInvalidate, object: coord).sink { [weak self] (_) in
+            do {
+                try self?._fetch()
+            } catch {
+                self?._error.send(error)
+            }
+        }.store(in: &_observers)
     }
     
     public func fetch() throws {
         try self._queue.sync {
-            
             try self._fetch()
         }
     }
     
     private func _fetch() throws {
-        self.objectWillChange.send()
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
         
         try self._coordinator.connection.onQueue {
-            try self.statement.reset()
-            
             Log.coordinator.debug("Performing CoordinatedQuery for \(String(describing: ModelType.self))")
             
-            let results = try self._coordinator.connection._query(statement: self.statement)
+            let (sql, values) = self.query.generate()
+            
+            let statement = try self._coordinator.connection._prepare(sql: sql)
+            try statement.bind(values)
+            
+            let results = try self._coordinator.connection._query(statement: statement)
             
             self._objects = try results.rows().map { try ModelType.init(withRow: $0) }
             
@@ -160,6 +213,14 @@ public class CoordinatedQuery<ModelType : Model> : ObservableObject, Cancellable
     }
     
     private func didSave(_ model: Model) {
+        guard model is ModelType else {
+            return
+        }
+        
+        self._hasChanges = true
+    }
+    
+    private func didDelete(_ model: Model) {
         guard model is ModelType else {
             return
         }
@@ -204,14 +265,20 @@ public struct CoordinatedView<Content : View, ViewModel : Model> : View {
     
     @ObservedObject var query: CoordinatedQuery<ViewModel>
     
-    public init(query: CoordinatedQuery<ViewModel>, @ViewBuilder content: @escaping (Array<ViewModel>) -> Content) {
+    public init(coordinator: Coordinator, query: Query<ViewModel>, @ViewBuilder content: @escaping (Array<ViewModel>) -> Content) {
         self.content = content
-        self.query = query
+        self.query = coordinator.query(query)
     }
     
     public var body: some View {
         return ZStack {
             self.content(self.query.objects)
+        }.onAppear {
+            do {
+                try self.query.fetch()
+            } catch {
+                Log.coordinator.critical("Failed to perform fetch for CoordinatedView \(error.localizedDescription)")
+            }
         }
     }
 }

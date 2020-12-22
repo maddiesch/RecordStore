@@ -68,6 +68,15 @@ extension Value {
             return nil
         }
     }
+    
+    public var bool: Bool {
+        switch self {
+        case .int64(let v):
+            return v == 1 ? true : false
+        default:
+            return false
+        }
+    }
 }
 
 extension Value : ExpressibleByNilLiteral {
